@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Medical Records</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
@@ -269,6 +270,40 @@ main {
 .flag-low  { color: #2563eb; font-weight: 600; }
 .flag-critical { color: #7c2d12; font-weight: 700; }
 .flag-normal { color: #16a34a; }
+.lab-group-name { cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+.lab-chart-btn {
+  font-size: 11px; padding: 2px 8px; border-radius: 4px;
+  border: 1px solid #ddd; background: #f4f4f4; color: #444;
+  cursor: pointer; font-family: inherit;
+}
+.lab-chart-btn:hover { background: #e8e8e8; }
+
+/* ── CHART MODAL ── */
+#chart-modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: none; align-items: center; justify-content: center;
+  z-index: 200;
+}
+#chart-modal.open { display: flex; }
+#chart-inner {
+  background: #fff;
+  border-radius: 10px;
+  padding: 24px;
+  width: min(700px, 90vw);
+  display: flex; flex-direction: column; gap: 14px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.15);
+}
+#chart-title { font-size: 15px; font-weight: 600; }
+#chart-meta { font-size: 12px; color: #999; }
+#chart-wrap { position: relative; height: 280px; }
+#chart-close {
+  align-self: flex-end;
+  background: #f4f4f4; border: 1px solid #ddd; color: #444;
+  padding: 5px 14px; border-radius: 6px;
+  cursor: pointer; font-family: inherit; font-size: 13px;
+}
+#chart-close:hover { background: #e8e8e8; }
 </style>
 </head>
 <body>
@@ -318,6 +353,18 @@ main {
       <button class="hdr-btn" onclick="closeLabs()">Close</button>
     </div>
     <div id="labs-body"><div style="color:#bbb;padding:20px">No lab values extracted yet.</div></div>
+  </div>
+</div>
+
+<!-- CHART MODAL -->
+<div id="chart-modal" onclick="if(event.target===this)closeChart()">
+  <div id="chart-inner">
+    <div>
+      <div id="chart-title"></div>
+      <div id="chart-meta"></div>
+    </div>
+    <div id="chart-wrap"><canvas id="chart-canvas"></canvas></div>
+    <button id="chart-close" onclick="closeChart()">Close</button>
   </div>
 </div>
 
@@ -662,7 +709,10 @@ function renderLabs(values) {
   const sorted = Object.entries(byTest).sort((a, b) => a[0].localeCompare(b[0]));
   body.innerHTML = sorted.map(([name, rows]) => `
     <div class="lab-group">
-      <div class="lab-group-name">${esc(name)}</div>
+      <div class="lab-group-name">
+        <span>${esc(name)}</span>
+        <button class="lab-chart-btn" onclick="showChart(${JSON.stringify(name)})">Chart</button>
+      </div>
       <table class="lab-table">
         <thead><tr>
           <th>Date</th><th>Value</th><th>Unit</th><th>Reference</th><th>Flag</th>
@@ -682,6 +732,110 @@ function renderLabs(values) {
       </table>
     </div>
   `).join('');
+}
+
+// ── CHARTS ────────────────────────────────────────────────────────────
+let _activeChart = null;
+
+function showChart(testName) {
+  const rows = _allLabValues
+    .filter(lv => lv.test_name === testName && lv.value && lv.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (!rows.length) { alert('No dated values for ' + testName); return; }
+
+  const unit = rows.find(r => r.unit)?.unit || '';
+  const labels = rows.map(r => r.date);
+  const values = rows.map(r => parseFloat(r.value));
+
+  // Reference range band (use most common reference range)
+  const refRanges = rows.map(r => r.reference_range).filter(Boolean);
+  const refRange = refRanges[0] || null;
+  let refLow = null, refHigh = null;
+  if (refRange) {
+    const m = refRange.match(/([\d.]+)\s*[-–]\s*([\d.]+)/);
+    if (m) { refLow = parseFloat(m[1]); refHigh = parseFloat(m[2]); }
+  }
+
+  // Point colors based on flag
+  const pointColors = rows.map(r => {
+    if (r.flag === 'High' || r.flag === 'Critical') return '#dc2626';
+    if (r.flag === 'Low') return '#2563eb';
+    return '#111';
+  });
+
+  document.getElementById('chart-title').textContent = testName;
+  document.getElementById('chart-meta').textContent =
+    `${rows.length} data points${unit ? ' · ' + unit : ''}${refRange ? ' · ref: ' + refRange : ''}`;
+  document.getElementById('chart-modal').classList.add('open');
+
+  if (_activeChart) { _activeChart.destroy(); _activeChart = null; }
+
+  const datasets = [{
+    label: testName,
+    data: values,
+    borderColor: '#111',
+    backgroundColor: 'rgba(17,17,17,0.05)',
+    pointBackgroundColor: pointColors,
+    pointRadius: 5,
+    pointHoverRadius: 7,
+    tension: 0.3,
+    fill: false,
+  }];
+
+  // Add reference range as a shaded band
+  if (refLow !== null && refHigh !== null) {
+    datasets.push({
+      label: 'Reference range',
+      data: labels.map(() => refHigh),
+      borderColor: 'rgba(22,163,74,0.3)',
+      backgroundColor: 'rgba(22,163,74,0.08)',
+      pointRadius: 0,
+      fill: '+1',
+      tension: 0,
+    });
+    datasets.push({
+      label: '_refLow',
+      data: labels.map(() => refLow),
+      borderColor: 'rgba(22,163,74,0.3)',
+      backgroundColor: 'rgba(22,163,74,0.08)',
+      pointRadius: 0,
+      fill: false,
+      tension: 0,
+    });
+  }
+
+  _activeChart = new Chart(document.getElementById('chart-canvas'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const row = rows[ctx.dataIndex];
+              return `${ctx.parsed.y} ${unit}${row?.flag ? ' [' + row.flag + ']' : ''}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { grid: { color: '#f0f0f0' }, ticks: { maxRotation: 45 } },
+        y: {
+          grid: { color: '#f0f0f0' },
+          ticks: { callback: v => v + (unit ? ' ' + unit : '') },
+        },
+      },
+    },
+  });
+}
+
+function closeChart() {
+  document.getElementById('chart-modal').classList.remove('open');
+  if (_activeChart) { _activeChart.destroy(); _activeChart = null; }
 }
 
 function esc(s) {
