@@ -252,31 +252,26 @@ main {
   outline: none; width: 180px;
 }
 #labs-search:focus { border-color: #aaa; }
-#labs-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
-.lab-group { margin-bottom: 20px; }
-.lab-group-name {
-  font-size: 13px; font-weight: 600; color: #111;
-  margin-bottom: 6px; padding-bottom: 4px;
-  border-bottom: 1px solid #f0f0f0;
+#labs-body { flex: 1; overflow-y: auto; padding: 12px; }
+.lab-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
 }
-.lab-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.lab-table th {
-  text-align: left; padding: 4px 8px;
-  color: #999; font-weight: 500; font-size: 11px;
-  border-bottom: 1px solid #eee;
+.lab-card {
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 10px 12px 8px;
+  cursor: pointer;
+  background: #fff;
+  transition: box-shadow 0.15s;
 }
-.lab-table td { padding: 5px 8px; border-bottom: 1px solid #f6f6f6; }
-.flag-high { color: #dc2626; font-weight: 600; }
-.flag-low  { color: #2563eb; font-weight: 600; }
-.flag-critical { color: #7c2d12; font-weight: 700; }
-.flag-normal { color: #16a34a; }
-.lab-group-name { cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
-.lab-chart-btn {
-  font-size: 11px; padding: 2px 8px; border-radius: 4px;
-  border: 1px solid #ddd; background: #f4f4f4; color: #444;
-  cursor: pointer; font-family: inherit;
-}
-.lab-chart-btn:hover { background: #e8e8e8; }
+.lab-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); border-color: #ccc; }
+.lab-card-name { font-size: 12px; font-weight: 600; color: #111; margin-bottom: 2px; }
+.lab-card-latest { font-size: 11px; color: #999; margin-bottom: 6px; }
+.lab-card-latest .val-high { color: #dc2626; font-weight: 600; }
+.lab-card-latest .val-low  { color: #2563eb; font-weight: 600; }
+.lab-card-chart { height: 60px; position: relative; }
 
 /* ── CHART MODAL ── */
 #chart-modal {
@@ -693,45 +688,79 @@ function filterLabs(q) {
   renderLabs(filtered);
 }
 
+const _miniCharts = {};
+
 function renderLabs(values) {
   const body = document.getElementById('labs-body');
   if (!values.length) {
     body.innerHTML = '<div style="color:#bbb;padding:20px">No lab values found.</div>';
     return;
   }
-  // Group by test name
+
+  // Destroy existing mini charts
+  Object.values(_miniCharts).forEach(c => c.destroy());
+  Object.keys(_miniCharts).forEach(k => delete _miniCharts[k]);
+
   const byTest = {};
   for (const lv of values) {
     if (!byTest[lv.test_name]) byTest[lv.test_name] = [];
     byTest[lv.test_name].push(lv);
   }
-  // Sort test names alphabetically
   const sorted = Object.entries(byTest).sort((a, b) => a[0].localeCompare(b[0]));
-  body.innerHTML = sorted.map(([name, rows]) => `
-    <div class="lab-group">
-      <div class="lab-group-name">
-        <span>${esc(name)}</span>
-        <button class="lab-chart-btn" onclick="showChart(${JSON.stringify(name)})">Chart</button>
-      </div>
-      <table class="lab-table">
-        <thead><tr>
-          <th>Date</th><th>Value</th><th>Unit</th><th>Reference</th><th>Flag</th>
-        </tr></thead>
-        <tbody>
-          ${rows.map(r => {
-            const flagCls = r.flag === 'High' ? 'flag-high' : r.flag === 'Low' ? 'flag-low' : r.flag === 'Critical' ? 'flag-critical' : r.flag === 'Normal' ? 'flag-normal' : '';
-            return `<tr>
-              <td>${r.date || '—'}</td>
-              <td><strong>${esc(r.value || '—')}</strong></td>
-              <td>${esc(r.unit || '—')}</td>
-              <td>${esc(r.reference_range || '—')}</td>
-              <td class="${flagCls}">${esc(r.flag || '—')}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-  `).join('');
+
+  body.innerHTML = `<div class="lab-grid">${sorted.map(([name]) => {
+    const id = 'mini-' + name.replace(/\W/g, '_');
+    return `<div class="lab-card" onclick="showChart(${JSON.stringify(name)})">
+      <div class="lab-card-name">${esc(name)}</div>
+      <div class="lab-card-latest" id="latest-${id}"></div>
+      <div class="lab-card-chart"><canvas id="${id}"></canvas></div>
+    </div>`;
+  }).join('')}</div>`;
+
+  // Render each mini sparkline
+  sorted.forEach(([name, rows]) => {
+    const dated = rows.filter(r => r.value && r.date).sort((a, b) => a.date.localeCompare(b.date));
+    const id = 'mini-' + name.replace(/\W/g, '_');
+    const latest = dated[dated.length - 1];
+    const unit = rows.find(r => r.unit)?.unit || '';
+
+    // Latest value label
+    const latestEl = document.getElementById('latest-' + id);
+    if (latestEl && latest) {
+      const flagCls = latest.flag === 'High' || latest.flag === 'Critical' ? 'val-high' : latest.flag === 'Low' ? 'val-low' : '';
+      latestEl.innerHTML = `<span class="${flagCls}">${latest.value} ${unit}</span> · ${latest.date}`;
+    }
+
+    const canvas = document.getElementById(id);
+    if (!canvas || dated.length < 2) return;
+
+    const pointColors = dated.map(r =>
+      r.flag === 'High' || r.flag === 'Critical' ? '#dc2626' : r.flag === 'Low' ? '#2563eb' : '#111'
+    );
+
+    _miniCharts[name] = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: dated.map(r => r.date),
+        datasets: [{
+          data: dated.map(r => parseFloat(r.value)),
+          borderColor: '#111',
+          borderWidth: 1.5,
+          pointBackgroundColor: pointColors,
+          pointRadius: 3,
+          tension: 0.3,
+          fill: false,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: { x: { display: false }, y: { display: false } },
+        animation: false,
+      },
+    });
+  });
 }
 
 // ── CHARTS ────────────────────────────────────────────────────────────
