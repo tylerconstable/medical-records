@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Medical Records</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  background: #f9f9f9;
+  color: #111;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+header {
+  padding: 12px 20px;
+  border-bottom: 1px solid #e8e8e8;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+header h1 { font-size: 15px; font-weight: 600; color: #111; }
+header span { color: #999; font-size: 12px; }
+
+main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ── LEFT: DOCUMENTS ── */
+#docs-col {
+  width: 300px;
+  min-width: 250px;
+  border-right: 1px solid #e8e8e8;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+#docs-col-hdr {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e8e8e8;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Upload zone */
+#upload-zone {
+  margin: 12px;
+  border: 2px dashed #ddd;
+  border-radius: 8px;
+  padding: 20px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  color: #999;
+  font-size: 13px;
+}
+#upload-zone:hover, #upload-zone.drag-over {
+  border-color: #111;
+  background: #f6f6f6;
+  color: #111;
+}
+#upload-zone input { display: none; }
+#upload-progress {
+  margin: 0 12px 10px;
+  font-size: 12px;
+  color: #2563eb;
+  display: none;
+}
+
+/* Document list */
+#docs-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+}
+.doc-item {
+  padding: 9px 10px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: default;
+  border: 1px solid transparent;
+}
+.doc-item:hover { background: #f6f6f6; border-color: #eee; }
+.doc-name { font-size: 13px; color: #111; font-weight: 500; word-break: break-word; }
+.doc-meta { font-size: 11px; color: #999; display: flex; justify-content: space-between; }
+.doc-del {
+  background: none; border: none; color: #ccc;
+  cursor: pointer; font-size: 14px; align-self: flex-start;
+  padding: 0; line-height: 1;
+}
+.doc-del:hover { color: #dc2626; }
+.doc-row { display: flex; align-items: flex-start; gap: 6px; }
+
+/* ── RIGHT: QUERY ── */
+#query-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#answers {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.q-block { display: flex; flex-direction: column; gap: 8px; }
+.q-text {
+  align-self: flex-end;
+  background: #f0f4ff;
+  border: 1px solid #d0daff;
+  padding: 9px 14px;
+  border-radius: 8px;
+  max-width: 80%;
+  font-size: 14px;
+}
+.a-text {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 14px;
+  line-height: 1.7;
+  max-width: 100%;
+  white-space: pre-wrap;
+}
+.a-text strong { font-weight: 600; }
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #bbb;
+  gap: 8px;
+  font-size: 14px;
+}
+
+#query-input-wrap {
+  display: flex;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid #e8e8e8;
+  background: #fff;
+  flex-shrink: 0;
+}
+#query-input {
+  flex: 1;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  resize: none;
+  line-height: 1.4;
+  background: #fff;
+}
+#query-input:focus { border-color: #aaa; }
+#query-send {
+  background: #111; color: #fff; border: none;
+  padding: 8px 18px; border-radius: 6px;
+  cursor: pointer; font-family: inherit; font-size: 14px;
+  align-self: flex-end;
+}
+#query-send:hover { background: #333; }
+#query-send:disabled { opacity: 0.4; cursor: default; }
+
+/* ── DATE MODAL ── */
+#date-modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100;
+}
+#date-modal.open { display: flex; }
+#date-inner {
+  background: #fff;
+  border-radius: 10px;
+  padding: 24px;
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+}
+#date-inner h2 { font-size: 15px; font-weight: 600; }
+#date-inner p { font-size: 13px; color: #666; line-height: 1.5; }
+#date-input {
+  border: 1px solid #ddd; border-radius: 6px;
+  padding: 8px 10px; font-family: inherit; font-size: 14px;
+  outline: none; width: 100%;
+}
+#date-input:focus { border-color: #aaa; }
+.date-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.date-btns button {
+  padding: 7px 16px; border-radius: 6px;
+  cursor: pointer; font-family: inherit; font-size: 13px;
+  border: 1px solid #ddd; background: #f4f4f4; color: #444;
+}
+.date-btns button.primary {
+  background: #111; color: #fff; border-color: #111;
+}
+.date-btns button.primary:hover { background: #333; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Medical Records</h1>
+  <span id="header-status"></span>
+</header>
+
+<main>
+  <!-- LEFT: documents -->
+  <div id="docs-col">
+    <div id="docs-col-hdr">Documents</div>
+    <div id="upload-zone" onclick="document.getElementById('file-input').click()"
+         ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+      <input type="file" id="file-input" accept=".pdf" multiple onchange="handleFiles(this.files)">
+      Drop PDFs here or click to upload
+    </div>
+    <div id="upload-progress"></div>
+    <div id="docs-list"><div style="padding:8px 10px;color:#bbb;font-size:12px">No documents yet</div></div>
+  </div>
+
+  <!-- RIGHT: query -->
+  <div id="query-col">
+    <div id="answers">
+      <div class="empty-state">
+        <div>Upload your medical records, then ask anything.</div>
+        <div style="font-size:12px">e.g. "What was my last HbA1c?" or "Summarize my cardiology visits"</div>
+      </div>
+    </div>
+    <div id="query-input-wrap">
+      <textarea id="query-input" rows="2"
+        placeholder="Ask a question about your records… (Enter to send)"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();askQuestion();}"></textarea>
+      <button id="query-send" onclick="askQuestion()">Ask</button>
+    </div>
+  </div>
+</main>
+
+<!-- DATE MODAL -->
+<div id="date-modal">
+  <div id="date-inner">
+    <h2 id="date-modal-title">Document date</h2>
+    <p id="date-modal-msg"></p>
+    <input type="date" id="date-input">
+    <div class="date-btns">
+      <button onclick="cancelUpload()">Cancel</button>
+      <button class="primary" onclick="confirmDate()">Continue</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js" defer></script>
+<script>
+const _supa = supabase.createClient(
+  'https://xjcrtucwycyllzqyylwd.supabase.co',
+  'sb_publishable_mFL0D4uzwnUdv7uZulHFug_kmWmpEpX'
+);
+
+// ── PDF TEXT EXTRACTION ───────────────────────────────────────────────
+let _pdfjsReady = false;
+const _pdfjsScript = document.createElement('script');
+_pdfjsScript.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+_pdfjsScript.onload = () => {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  _pdfjsReady = true;
+};
+document.head.appendChild(_pdfjsScript);
+
+async function extractPdfText(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const text = content.items.map(item => item.str).join(' ');
+    pages.push({ page: i, text });
+  }
+  return pages;
+}
+
+// ── DATE DETECTION ────────────────────────────────────────────────────
+function findDateInText(text) {
+  const patterns = [
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/i,
+    /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}\b/,
+    /\b\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\b/,
+    /\b\d{1,2}\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b/i,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) return m[0];
+  }
+  return null;
+}
+
+// ── CHUNKING ──────────────────────────────────────────────────────────
+function chunkPages(pages) {
+  const chunks = [];
+  const CHUNK_WORDS = 400;
+  const OVERLAP_WORDS = 50;
+
+  for (const { page, text } of pages) {
+    const words = text.split(/\s+/).filter(w => w.length > 0);
+    for (let i = 0; i < words.length; i += CHUNK_WORDS - OVERLAP_WORDS) {
+      const slice = words.slice(i, i + CHUNK_WORDS).join(' ').trim();
+      if (slice.length > 30) chunks.push({ content: slice, page });
+    }
+  }
+  return chunks;
+}
+
+// ── UPLOAD FLOW ───────────────────────────────────────────────────────
+let _pendingFiles = [];
+let _pendingIdx = 0;
+let _pendingPages = null;
+let _pendingChunks = null;
+
+function onDragOver(e) { e.preventDefault(); document.getElementById('upload-zone').classList.add('drag-over'); }
+function onDragLeave()  { document.getElementById('upload-zone').classList.remove('drag-over'); }
+function onDrop(e)      { e.preventDefault(); onDragLeave(); handleFiles(e.dataTransfer.files); }
+
+async function handleFiles(fileList) {
+  if (!_pdfjsReady) { alert('PDF reader still loading, try again in a moment.'); return; }
+  _pendingFiles = Array.from(fileList).filter(f => f.type === 'application/pdf');
+  _pendingIdx = 0;
+  processNextFile();
+}
+
+async function processNextFile() {
+  if (_pendingIdx >= _pendingFiles.length) return;
+  const file = _pendingFiles[_pendingIdx];
+  setProgress(`Extracting text from ${file.name}…`);
+
+  try {
+    const pages = await extractPdfText(file);
+    const firstPageText = pages[0]?.text || '';
+    const foundDate = findDateInText(firstPageText);
+    _pendingPages = pages;
+    _pendingChunks = chunkPages(pages);
+
+    // Show date modal
+    const titleEl = document.getElementById('date-modal-title');
+    const msgEl   = document.getElementById('date-modal-msg');
+    const inp     = document.getElementById('date-input');
+
+    if (foundDate) {
+      titleEl.textContent = 'Confirm document date';
+      msgEl.textContent = `Found "${foundDate}" in ${file.name}. Confirm or correct it.`;
+      // Try to parse into YYYY-MM-DD for the input
+      const parsed = new Date(foundDate);
+      inp.value = isNaN(parsed) ? '' : parsed.toISOString().split('T')[0];
+    } else {
+      titleEl.textContent = 'Date not found';
+      msgEl.textContent = `Could not find a date in "${file.name}". Please enter it manually.`;
+      inp.value = '';
+    }
+    document.getElementById('date-modal').classList.add('open');
+  } catch(e) {
+    setProgress(`Error reading ${file.name}: ${e.message}`);
+  }
+}
+
+function cancelUpload() {
+  document.getElementById('date-modal').classList.remove('open');
+  _pendingPages = null;
+  _pendingChunks = null;
+  _pendingIdx++;
+  processNextFile();
+}
+
+async function confirmDate() {
+  const date = document.getElementById('date-input').value;
+  if (!date) { document.getElementById('date-input').focus(); return; }
+  document.getElementById('date-modal').classList.remove('open');
+
+  const file = _pendingFiles[_pendingIdx];
+  setProgress(`Uploading "${file.name}"…`);
+
+  try {
+    // 1. Insert document record
+    const { data: doc, error: docErr } = await _supa
+      .from('documents')
+      .insert({ name: file.name, date })
+      .select()
+      .single();
+    if (docErr) throw new Error(docErr.message);
+
+    // 2. Send chunks to embed API
+    setProgress(`Embedding ${_pendingChunks.length} chunks from "${file.name}"…`);
+    const res = await fetch('/api/embed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_id: doc.id, chunks: _pendingChunks }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'embed failed');
+
+    setProgress(`Done — ${result.chunks} chunks stored.`);
+    setTimeout(() => setProgress(''), 3000);
+    await loadDocuments();
+  } catch(e) {
+    setProgress(`Error: ${e.message}`);
+  }
+
+  _pendingIdx++;
+  processNextFile();
+}
+
+function setProgress(msg) {
+  const el = document.getElementById('upload-progress');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+// ── DOCUMENTS LIST ────────────────────────────────────────────────────
+let _documents = [];
+
+async function loadDocuments() {
+  const { data } = await _supa.from('documents').select('*').order('date', { ascending: false });
+  _documents = data || [];
+  renderDocuments();
+}
+
+function renderDocuments() {
+  const list = document.getElementById('docs-list');
+  if (!_documents.length) {
+    list.innerHTML = '<div style="padding:8px 10px;color:#bbb;font-size:12px">No documents yet</div>';
+    return;
+  }
+  list.innerHTML = _documents.map(d => `
+    <div class="doc-item">
+      <div class="doc-row">
+        <div class="doc-name" style="flex:1">${esc(d.name)}</div>
+        <button class="doc-del" onclick="deleteDoc('${d.id}')" title="Delete">×</button>
+      </div>
+      <div class="doc-meta">
+        <span>${d.date || 'no date'}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function deleteDoc(id) {
+  if (!confirm('Delete this document and all its chunks?')) return;
+  await _supa.from('documents').delete().eq('id', id);
+  _documents = _documents.filter(d => d.id !== id);
+  renderDocuments();
+}
+
+// ── QUERY ─────────────────────────────────────────────────────────────
+async function askQuestion() {
+  const inp = document.getElementById('query-input');
+  const question = inp.value.trim();
+  if (!question) return;
+  inp.value = '';
+
+  const answers = document.getElementById('answers');
+  // Clear empty state
+  answers.querySelector('.empty-state')?.remove();
+
+  const block = document.createElement('div');
+  block.className = 'q-block';
+  block.innerHTML = `<div class="q-text">${esc(question)}</div><div class="a-text" id="a-streaming">Searching records…</div>`;
+  answers.appendChild(block);
+  answers.scrollTop = answers.scrollHeight;
+
+  const aEl = block.querySelector('#a-streaming');
+  aEl.removeAttribute('id');
+
+  const btn = document.getElementById('query-send');
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      aEl.textContent = 'Error: ' + (err.error || 'unknown error');
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let full = '';
+
+    aEl.textContent = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (raw === '[DONE]') continue;
+        try {
+          const j = JSON.parse(raw);
+          full += j.choices?.[0]?.delta?.content || '';
+          aEl.textContent = full;
+          answers.scrollTop = answers.scrollHeight;
+        } catch {}
+      }
+    }
+  } catch(e) {
+    aEl.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// init
+loadDocuments();
+</script>
+</body>
+</html>
