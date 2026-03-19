@@ -1,7 +1,7 @@
 // Embeds question, finds relevant chunks + lab values, streams answer
 
-const SUPABASE_URL  = 'https://xjcrtucwycyllzqyylwd.supabase.co';
-const SUPABASE_ANON = 'sb_publishable_mFL0D4uzwnUdv7uZulHFug_kmWmpEpX';
+const SUPABASE_URL  = 'https://jkitmbtrpswcotgsxpwg.supabase.co';
+const SUPABASE_ANON = 'sb_publishable_Pzt-KZGmSl0ebkUwbuvYFg_5ksz0uHq';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
