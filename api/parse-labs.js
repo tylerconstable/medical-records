@@ -23,16 +23,18 @@ export default async function handler(req, res) {
         messages: [
           {
             role: 'system',
-            content: `You are extracting lab test results from medical document text.
+            content: `You are extracting lab test results from medical document text. The document may contain results from a single visit or many visits across different dates.
 Return ONLY a JSON object in this exact format:
-{"results": [{"test_name": string, "value": string, "unit": string, "reference_range": string or null, "flag": "Normal" or "High" or "Low" or "Critical" or null}]}
+{"results": [{"test_name": string, "value": string, "unit": string, "reference_range": string or null, "flag": "Normal" or "High" or "Low" or "Critical" or null, "date": "YYYY-MM-DD" or null}]}
 
 Rules:
-- Include every individual lab test you find (glucose, HbA1c, cholesterol, TSH, CBC components, etc.)
+- Include every individual lab result you find, one object per test per date
+- If the document has results from multiple dates, extract each separately with its own date
+- date: find the collection or result date nearest to each result — return as YYYY-MM-DD. If you cannot determine a date for a specific result, return null
 - value should be the numeric result as a string
 - unit is the measurement unit (mg/dL, %, mmol/L, etc.)
 - reference_range is the normal range if shown (e.g. "70-99")
-- flag is whether the result is flagged — infer from H/L markers or if value is outside reference range
+- flag: infer from H/L/HH/LL markers or if value is outside reference range
 - If no lab results exist in the document, return {"results": []}
 - Do not include vitals like blood pressure or weight unless explicitly labeled as lab tests`
           },
@@ -56,7 +58,7 @@ Rules:
       unit: r.unit || null,
       reference_range: r.reference_range || null,
       flag: r.flag || null,
-      date: date || null,
+      date: r.date || date || null,  // use per-result date, fall back to document date
     }));
 
     const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/lab_values`, {

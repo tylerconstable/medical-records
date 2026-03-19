@@ -329,7 +329,8 @@ main {
     <input type="date" id="date-input">
     <div class="date-btns">
       <button onclick="cancelUpload()">Cancel</button>
-      <button class="primary" onclick="confirmDate()">Continue</button>
+      <button onclick="confirmDate(true)">Skip date</button>
+      <button class="primary" onclick="confirmDate(false)">Continue</button>
     </div>
   </div>
 </div>
@@ -432,13 +433,12 @@ async function processNextFile() {
 
     if (foundDate) {
       titleEl.textContent = 'Confirm document date';
-      msgEl.textContent = `Found "${foundDate}" in ${file.name}. Confirm or correct it.`;
-      // Try to parse into YYYY-MM-DD for the input
+      msgEl.textContent = `Found "${foundDate}" in ${file.name}. If this document spans multiple dates (e.g. a panel over time), click Skip — dates will be extracted per result automatically.`;
       const parsed = new Date(foundDate);
       inp.value = isNaN(parsed) ? '' : parsed.toISOString().split('T')[0];
     } else {
-      titleEl.textContent = 'Date not found';
-      msgEl.textContent = `Could not find a date in "${file.name}". Please enter it manually.`;
+      titleEl.textContent = 'Document date';
+      msgEl.textContent = `No date found in "${file.name}". Enter one if it's a single-date document, or Skip — dates will be extracted per lab result automatically.`;
       inp.value = '';
     }
     document.getElementById('date-modal').classList.add('open');
@@ -455,9 +455,9 @@ function cancelUpload() {
   processNextFile();
 }
 
-async function confirmDate() {
-  const date = document.getElementById('date-input').value;
-  if (!date) { document.getElementById('date-input').focus(); return; }
+async function confirmDate(skip = false) {
+  const date = skip ? null : document.getElementById('date-input').value;
+  if (!skip && !date) { document.getElementById('date-input').focus(); return; }
   document.getElementById('date-modal').classList.remove('open');
 
   const file = _pendingFiles[_pendingIdx];
