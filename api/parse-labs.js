@@ -16,21 +16,23 @@ export default async function handler(req, res) {
     const content = [
       {
         type: 'text',
-        text: `You are extracting lab test results from medical record pages. Look carefully at all tables, columns, and values visible in the images.
+        text: `Extract ALL lab values from these medical record pages.
 
-Return ONLY a JSON object in this exact format:
+Requirements:
+- Include EVERY date present in the document
+- Include ALL lab markers visible — do not skip any test
+- One result object per test per date
+- If a table has multiple date columns, extract each column separately with its own date
+- Do NOT omit any values — if a value is missing for a date use null
+- Do NOT summarize or group date ranges — extract each individual date
+- Look carefully at column headers for dates, and row labels for test names
+- Flags: look for H/L/HH/LL markers, asterisks, or values outside reference range
+- Remove duplicate rows that are just different reference ranges for the same value
+
+Return ONLY a JSON object:
 {"results": [{"test_name": string, "value": string, "unit": string, "reference_range": string or null, "flag": "Normal" or "High" or "Low" or "Critical" or null, "date": "YYYY-MM-DD" or null}]}
 
-Rules:
-- Extract every individual lab test result you can see — one object per test per date
-- If a table has multiple date columns, extract each column as a separate result with its own date
-- date: find the collection/result date for each result — look for column headers, nearby dates, or date labels
-- value: the numeric result as a string
-- unit: e.g. mg/dL, %, U/L, mmol/L
-- reference_range: the normal range if shown e.g. "70-99"
-- flag: infer from H/L/HH/LL markers or asterisks, or if value is clearly outside reference range
-- If no lab results are visible, return {"results": []}
-- Do not include vitals (BP, weight, height) unless explicitly part of a lab panel`,
+If no lab results are visible return {"results": []}.`,
       },
       ...images.map(img => ({
         type: 'image_url',
