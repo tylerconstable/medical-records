@@ -366,19 +366,14 @@ async function extractPdfText(file) {
   return { pages, pdf };
 }
 
-// Render each PDF page to a JPEG base64 image for vision-based extraction
-async function renderPagesToImages(pdf) {
-  const images = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 1.5 });
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    images.push(canvas.toDataURL('image/jpeg', 0.82).split(',')[1]);
-  }
-  return images;
+// Read PDF file as base64 for direct upload to OpenAI
+async function readPdfAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 // ── DATE DETECTION ────────────────────────────────────────────────────
@@ -417,7 +412,6 @@ let _pendingFiles = [];
 let _pendingIdx = 0;
 let _pendingPages = null;
 let _pendingChunks = null;
-let _pendingPdf = null;
 
 function onDragOver(e) { e.preventDefault(); document.getElementById('upload-zone').classList.add('drag-over'); }
 function onDragLeave()  { document.getElementById('upload-zone').classList.remove('drag-over'); }
@@ -436,12 +430,11 @@ async function processNextFile() {
   setProgress(`Extracting text from ${file.name}…`);
 
   try {
-    const { pages, pdf } = await extractPdfText(file);
+    const { pages } = await extractPdfText(file);
     const firstPageText = pages[0]?.text || '';
     const foundDate = findDateInText(firstPageText);
     _pendingPages = pages;
     _pendingChunks = chunkPages(pages);
-    _pendingPdf = pdf;
 
     // Show date modal
     const titleEl = document.getElementById('date-modal-title');
@@ -499,22 +492,16 @@ async function confirmDate(skip = false) {
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'embed failed');
 
-    // 3. Second pass — render pages as images, send to GPT-4o Vision in batches
-    setProgress(`Rendering pages for visual lab extraction…`);
-    const images = await renderPagesToImages(_pendingPdf);
-    const BATCH = 4;
-    let totalLabs = 0;
-    for (let i = 0; i < images.length; i += BATCH) {
-      const batch = images.slice(i, i + BATCH);
-      setProgress(`Extracting lab values (pages ${i + 1}–${Math.min(i + BATCH, images.length)} of ${images.length})…`);
-      const labRes = await fetch('/api/parse-labs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document_id: doc.id, images: batch, date }),
-      });
-      const labResult = await labRes.json();
-      if (labRes.ok) totalLabs += labResult.count || 0;
-    }
+    // 3. Second pass — upload PDF directly to OpenAI, extract all lab values at once
+    setProgress(`Uploading PDF for lab extraction…`);
+    const pdf_base64 = await readPdfAsBase64(file);
+    const labRes = await fetch('/api/parse-labs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_id: doc.id, pdf_base64, filename: file.name, date }),
+    });
+    const labResult = await labRes.json();
+    const totalLabs = labResult.count || 0;
     const labMsg = totalLabs > 0 ? `, ${totalLabs} lab values extracted` : '';
 
     setProgress(`Done — ${result.chunks} chunks stored${labMsg}.`);
